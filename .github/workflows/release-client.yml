@@ -1,0 +1,325 @@
+name: Release client
+
+on:
+  push:
+    tags: ["client-v*"]
+  schedule:
+    - cron: "7 18 * * 0" # Sundays 18:07 UTC (weekly pre-alpha snapshot of master)
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version core, e.g. 0.2.0 (blank = bump patch from latest)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Build and package only: the files stay on the run, nothing is released"
+        type: boolean
+        default: false
+  # A pull request that changes the packaging builds and packages it, like a
+  # dry run, so a broken installer shows up before the weekly release.
+  pull_request:
+    paths: ["packaging/**", ".github/workflows/release-client.yml"]
+
+env:
+  CARGO_TERM_COLOR: always
+  MC_VERSION: "26.2"
+
+permissions:
+  contents: write
+  actions: read # reading CI's conclusion for the commit being released
+
+# Releases are serialized, never cancelled: two runs would resolve the same next
+# version and race on the tag, and cancelling one mid-upload would leave a
+# partial release. A pull request's runs only replace each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || 'release' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      tag: ${{ steps.rel.outputs.tag }}
+      prev: ${{ steps.rel.outputs.prev }}
+      version: ${{ steps.rel.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check for new commits since last release
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release() { echo "should_release=true" >> "$GITHUB_OUTPUT"; exit 0; }
+          skip() { echo "should_release=false" >> "$GITHUB_OUTPUT"; echo "$1"; exit 0; }
+
+          # Only the weekly cron is gated; a tag push or manual dispatch is a
+          # deliberate act and always releases, and a pull request only builds.
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            release
+          fi
+
+          git fetch --tags --force
+          last_tag=$(git tag --list 'client-v*' --sort=-v:refname | head -n1)
+          if [ -n "$last_tag" ] && [ -z "$(git rev-list "${last_tag}..HEAD")" ]; then
+            skip "No new commits on master since ${last_tag}."
+          fi
+
+          # Merges are gated on CI, but master can still go red when two PRs pass
+          # separately and then conflict, and this release is announced to
+          # Discord. A run still in progress reports null and also skips.
+          ci=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&per_page=1" \
+            --jq '.workflow_runs[0].conclusion // "none"')
+          if [ "$ci" != "success" ]; then
+            skip "CI for ${GITHUB_SHA} is '${ci}', not success."
+          fi
+
+          release
+
+      # Ahead of the build, which bakes the tag in for the client's updater.
+      - name: Resolve release tag
+        id: rel
+        shell: bash
+        run: |
+          git fetch --tags --force
+          tags=$(git tag --list 'client-v*')
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag="${{ github.ref_name }}"
+          else
+            core="${{ inputs.version }}"
+            if [ -z "$core" ]; then
+              latest=$(echo "$tags" \
+                | sed -nE 's/^client-v([0-9]+\.[0-9]+\.[0-9]+).*$/\1/p' \
+                | sort -V | tail -n1)
+              if [ -z "$latest" ]; then
+                core="0.1.0"
+              else
+                IFS=. read -r ma mi pa <<< "$latest"
+                core="$ma.$mi.$((pa + 1))"
+              fi
+            fi
+            tag="client-v${core}+${MC_VERSION}"
+          fi
+          prev=$(echo "$tags" | grep -vFx "$tag" | sort -V | tail -n1 || true)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          version=${tag#client-v}
+          echo "version=${version%%+*}" >> "$GITHUB_OUTPUT"
+          echo "prev=$prev" >> "$GITHUB_OUTPUT"
+
+  build-client:
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: win-client.exe
+            name: win-client-windows-x64
+            openal_classifier: natives-windows
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: pomme-client
+            name: win-client-linux-x64-gnu
+            openal_classifier: natives-linux
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: pomme-client
+            name: win-client-macos-arm64
+            openal_classifier: natives-macos-arm64
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: release
+
+      - name: Build
+        env:
+          WIN_CLIENT_RELEASE: ${{ needs.check.outputs.tag }}
+        run: cargo build -p pomme-client --release --target ${{ matrix.target }}
+
+      # The runner images disagree on whether `python` or `python3` is on PATH,
+      # and the `--require` staging below fails the release rather than degrade.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+
+      # Version, jar member and checksum come from
+      # pomme-client/third-party/openal-natives.txt, which `just openal` also
+      # reads, so a release and a dev build never diverge.
+      - name: Stage Minecraft's OpenAL Soft native
+        shell: bash
+        run: |
+          mkdir -p bundle
+          python tools/fetch_openal.py bundle \
+            --classifier "${{ matrix.openal_classifier }}" --require
+
+      - name: Package (Unix)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          mkdir -p dist bundle
+          cp "target/${{ matrix.target }}/release/${{ matrix.artifact }}" bundle/
+          cp pomme-client/third-party/OpenAL-Soft-LICENSE.txt bundle/
+          cp pomme-client/third-party/OpenAL-Soft-NOTICE.txt bundle/
+
+          # macOS has no system Vulkan, so ship the loader + MoltenVK + ICD next
+          # to the binary (build.rs gives it an @executable_path rpath).
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            findlib() { find "$VULKAN_SDK" -name "$1" | head -n1; }
+            loader=$(findlib libvulkan.1.dylib)
+            mvk=$(findlib libMoltenVK.dylib)
+            icd=$(findlib MoltenVK_icd.json)
+            if [ -z "$loader" ] || [ -z "$mvk" ] || [ -z "$icd" ]; then
+              echo "::error::Vulkan runtime not found under VULKAN_SDK=$VULKAN_SDK (loader='$loader' mvk='$mvk' icd='$icd')"
+              exit 1
+            fi
+            cp "$loader" "$mvk" bundle/
+            sed -E 's#("library_path"[[:space:]]*:[[:space:]]*)"[^"]*"#\1"./libMoltenVK.dylib"#' \
+              "$icd" > bundle/MoltenVK_icd.json
+          fi
+
+          (cd bundle && zip -j "../dist/${{ matrix.name }}.zip" ./*)
+
+      - name: Package (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist, bundle | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.artifact }}" bundle/
+          Copy-Item "pomme-client/third-party/OpenAL-Soft-LICENSE.txt" bundle/
+          Copy-Item "pomme-client/third-party/OpenAL-Soft-NOTICE.txt" bundle/
+          Compress-Archive -Path "bundle/*" -DestinationPath "dist/${{ matrix.name }}.zip"
+
+      # The installers wrap the same files the zip holds, which stays the
+      # updater's download.
+      - name: Installer (macOS)
+        if: matrix.os == 'macos-latest'
+        run: packaging/macos.sh bundle "${{ needs.check.outputs.version }}" "dist/${{ matrix.name }}.dmg"
+
+      - name: Installer (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: packaging/linux.sh bundle "${{ needs.check.outputs.version }}" "dist/${{ matrix.name }}.AppImage"
+
+      - name: Installer (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          choco install innosetup --version=6.7.1 -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            "/DAppVersion=${{ needs.check.outputs.version }}" `
+            "/DBundle=$PWD\bundle" "/DOutDir=$PWD\dist" "/DOutName=${{ matrix.name }}-setup" `
+            packaging\windows\pomme.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.name }}
+          path: dist/
+          if-no-files-found: error
+
+  release-client:
+    needs: [check, build-client]
+    if: >-
+      needs.check.outputs.should_release == 'true' && !inputs.dry_run
+      && github.event_name != 'pull_request'
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Prepare corresponding source archive with SteelMC
+        env:
+          RELEASE_TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          set -euo pipefail
+          source_asset="Win-Client-${RELEASE_TAG}-source.tar.gz"
+          staging=$(mktemp -d)
+          trap 'rm -rf "$staging"' EXIT
+          mkdir -p "$staging/Win-Client-${RELEASE_TAG}"
+          git archive HEAD | tar -x -C "$staging/Win-Client-${RELEASE_TAG}"
+          rm -rf "$staging/Win-Client-${RELEASE_TAG}/third_party/SteelMC"
+          mkdir -p "$staging/Win-Client-${RELEASE_TAG}/third_party/SteelMC"
+          git -C third_party/SteelMC archive HEAD | tar -x -C "$staging/Win-Client-${RELEASE_TAG}/third_party/SteelMC"
+          printf '%s\n' "$(git -C third_party/SteelMC rev-parse HEAD)" \
+            > "$staging/Win-Client-${RELEASE_TAG}/third_party/SteelMC/.git-submodule-commit"
+          git -C third_party/SteelMC show -s --format='%H%n%P%n%an%n%ae%n%aI%n%s' HEAD \
+            > "$staging/Win-Client-${RELEASE_TAG}/third_party/SteelMC/.git-commit-metadata"
+          git show -s --format="%H%n%P%n%an%n%ae%n%aI%n%s" HEAD \
+            > "$staging/Win-Client-${RELEASE_TAG}/.git-commit-metadata"
+          tar -czf "dist/${source_asset}" -C "$staging" "Win-Client-${RELEASE_TAG}"
+          export RELEASE_TAG
+          export SOURCE_COMMIT=$(git rev-parse HEAD)
+          export UPSTREAM_COMMIT=$(git show -s --format=%B HEAD | sed -n 's/^Upstream-Commit: //p' | head -n1)
+          : "${UPSTREAM_COMMIT:=unknown}"
+          export STEELMC_COMMIT=$(git -C third_party/SteelMC rev-parse HEAD)
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib
+          tag = os.environ['RELEASE_TAG']
+          dist = pathlib.Path('dist')
+          source = f'Win-Client-{tag}-source.tar.gz'
+          payload = sorted(p for p in dist.iterdir() if p.is_file())
+          hashes = [
+              {'name': p.name, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()}
+              for p in payload
+          ]
+          import zipfile
+          windows_zip = dist / 'win-client-windows-x64.zip'
+          with zipfile.ZipFile(windows_zip) as zf:
+              executable_sha256 = hashlib.sha256(zf.read('win-client.exe')).hexdigest()
+          manifest = {
+              'release_tag': tag,
+              'source_asset': source,
+              'source_sha256': next(x['sha256'] for x in hashes if x['name'] == source),
+              'executable_sha256': executable_sha256,
+              'windows_assets': [x['name'] for x in hashes if x['name'].startswith('win-client-windows-x64')],
+              'assets': hashes,
+              'source_commit': os.environ['SOURCE_COMMIT'],
+              'upstream_commit': os.environ['UPSTREAM_COMMIT'],
+              'steelmc_commit': os.environ['STEELMC_COMMIT'],
+              'hash_scope': 'All binary/platform/source assets; manifest and sha256sums.txt are metadata and are not self-hashed.',
+          }
+          (dist / f'Win-Client-{tag}-manifest.json').write_text(json.dumps(manifest, indent=2) + '\\n')
+          PY
+
+      - name: Generate checksums after all release assets are ready
+        run: |
+          cd dist
+          sha256sum * > sha256sums.txt
+
+      - name: Validate prepared release contract
+        env:
+          RELEASE_TAG: ${{ needs.check.outputs.tag }}
+          RELEASE_DIST: dist
+        run: python3 scripts/check-release-contract.py
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.check.outputs.tag }}
+          prerelease: false
+          make_latest: true
+          previous_tag: ${{ needs.check.outputs.prev }}
+          files: dist/*
+          generate_release_notes: ${{ needs.check.outputs.prev != '' }}
+          body: |
+            These builds aren't signed yet, so the first launch needs one extra step:
+            - **macOS:** open `Pomme.app` with right-click → Open, or allow it under System Settings → Privacy & Security.
+            - **Windows:** the x64 bundle is `win-client-windows-x64.zip` (`win-client.exe` + OpenAL notices); the installer is `win-client-windows-x64-setup.exe`. A compatible Vulkan-capable graphics driver is required. On the SmartScreen prompt, choose More info → Run anyway.
+            - **Linux:** `chmod +x win-client-linux-x64-gnu.AppImage`, then run it.

@@ -123,12 +123,12 @@ jobs:
             openal_classifier: natives-windows
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact: pomme-client
+            artifact: win-client
             name: win-client-linux-x64-gnu
             openal_classifier: natives-linux
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact: pomme-client
+            artifact: win-client
             name: win-client-macos-arm64
             openal_classifier: natives-macos-arm64
 
@@ -168,7 +168,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist bundle
-          cp "target/${{ matrix.target }}/release/${{ matrix.artifact }}" bundle/
+          binary="target/${{ matrix.target }}/release/${{ matrix.artifact }}"
+          if [ ! -f "$binary" ]; then
+            echo "::error::Expected release binary not found: $binary"
+            find "target/${{ matrix.target }}/release" -maxdepth 1 -type f -print
+            exit 1
+          fi
+          cp "$binary" bundle/
           cp pomme-client/third-party/OpenAL-Soft-LICENSE.txt bundle/
           cp pomme-client/third-party/OpenAL-Soft-NOTICE.txt bundle/
 

@@ -133,6 +133,9 @@ jobs:
             openal_classifier: natives-macos-arm64
 
     runs-on: ${{ matrix.os }}
+    # macOS arm64 runners are often unavailable (capacity); the launcher only
+    # consumes the Windows asset, so a macOS capacity failure must not block it.
+    continue-on-error: ${{ matrix.os == 'macos-latest' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -326,6 +329,7 @@ jobs:
           generate_release_notes: ${{ needs.check.outputs.prev != '' }}
           body: |
             These builds aren't signed yet, so the first launch needs one extra step:
-            - **macOS:** open `Pomme.app` with right-click → Open, or allow it under System Settings → Privacy & Security.
-            - **Windows:** the x64 bundle is `win-client-windows-x64.zip` (`win-client.exe` + OpenAL notices); the installer is `win-client-windows-x64-setup.exe`. A compatible Vulkan-capable graphics driver is required. On the SmartScreen prompt, choose More info → Run anyway.
+            - **macOS:** open `Pomme.app` with right-click в†’ Open, or allow it under System Settings в†’ Privacy & Security.
+            - **Windows:** the x64 bundle is `win-client-windows-x64.zip` (`win-client.exe` + OpenAL notices); the installer is `win-client-windows-x64-setup.exe`. A compatible Vulkan-capable graphics driver is required. On the SmartScreen prompt, choose More info в†’ Run anyway.
             - **Linux:** `chmod +x win-client-linux-x64-gnu.AppImage`, then run it.
+

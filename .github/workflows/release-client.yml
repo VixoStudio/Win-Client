@@ -295,7 +295,7 @@ jobs:
               'steelmc_commit': os.environ['STEELMC_COMMIT'],
               'hash_scope': 'All binary/platform/source assets; manifest and sha256sums.txt are metadata and are not self-hashed.',
           }
-          (dist / f'Win-Client-{tag}-manifest.json').write_text(json.dumps(manifest, indent=2) + '\\n')
+          (dist / f'Win-Client-{tag}-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
           PY
 
       - name: Generate checksums after all release assets are ready

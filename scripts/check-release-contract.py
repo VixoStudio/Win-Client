@@ -11,6 +11,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
 def read(path):
@@ -45,9 +46,9 @@ def validate_dist(dist, tag):
         raise SystemExit("manifest release tag/source asset is inconsistent")
     if not SHA256.fullmatch(manifest.get("source_sha256", "")):
         raise SystemExit("manifest source_sha256 is not a SHA-256 digest")
-    if not SHA256.fullmatch(manifest.get("source_commit", "")):
+    if not GIT_SHA.fullmatch(manifest.get("source_commit", "")):
         raise SystemExit("manifest source_commit is incomplete")
-    if not SHA256.fullmatch(manifest.get("steelmc_commit", "")):
+    if not GIT_SHA.fullmatch(manifest.get("steelmc_commit", "")):
         raise SystemExit("manifest steelmc_commit is incomplete")
 
     entries = manifest.get("assets")

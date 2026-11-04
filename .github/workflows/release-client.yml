@@ -303,11 +303,6 @@ jobs:
           cd dist
           sha256sum * > sha256sums.txt
 
-      - name: Debug manifest contents
-        run: |
-          ls -la dist
-          for f in dist/*manifest.json; do echo "== $f"; cat "$f"; done
-
       - name: Validate prepared release contract
         env:
           RELEASE_TAG: ${{ needs.check.outputs.tag }}
@@ -324,7 +319,7 @@ jobs:
           generate_release_notes: ${{ needs.check.outputs.prev != '' }}
           body: |
             These builds aren't signed yet, so the first launch needs one extra step:
-            - **macOS:** open `Pomme.app` with right-click Р Р†РІР‚В РІР‚в„ў Open, or allow it under System Settings Р Р†РІР‚В РІР‚в„ў Privacy & Security.
-            - **Windows:** the x64 bundle is `win-client-windows-x64.zip` (`win-client.exe` + OpenAL notices); the installer is `win-client-windows-x64-setup.exe`. A compatible Vulkan-capable graphics driver is required. On the SmartScreen prompt, choose More info Р Р†РІР‚В РІР‚в„ў Run anyway.
+            - **macOS:** open `Pomme.app` with right-click Р В Р вЂ Р Р†Р вЂљР’В Р Р†Р вЂљРІвЂћСћ Open, or allow it under System Settings Р В Р вЂ Р Р†Р вЂљР’В Р Р†Р вЂљРІвЂћСћ Privacy & Security.
+            - **Windows:** the x64 bundle is `win-client-windows-x64.zip` (`win-client.exe` + OpenAL notices); the installer is `win-client-windows-x64-setup.exe`. A compatible Vulkan-capable graphics driver is required. On the SmartScreen prompt, choose More info Р В Р вЂ Р Р†Р вЂљР’В Р Р†Р вЂљРІвЂћСћ Run anyway.
             - **Linux:** `chmod +x win-client-linux-x64-gnu.AppImage`, then run it.
 

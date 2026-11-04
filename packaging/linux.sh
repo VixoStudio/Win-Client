@@ -32,7 +32,7 @@ mkdir -p "$appdir/usr/bin" "$(dirname "$out")"
 cp "$bundle"/* "$appdir/usr/bin/"
 cp "$here/linux/pomme.desktop" "$appdir/"
 cp "$here/../pomme-client/assets/icon.png" "$appdir/pomme.png"
-ln -s usr/bin/pomme-client "$appdir/AppRun"
+ln -s usr/bin/win-client "$appdir/AppRun"
 
 # CI runners have no FUSE to mount the tool's own AppImage.
 APPIMAGE_EXTRACT_AND_RUN=1 VERSION=$version ARCH=x86_64 "$stage/appimagetool" \

@@ -134,7 +134,7 @@ def main():
     require(updater, '"win-client-windows-x64.zip"', "Windows updater ZIP")
     require(updater, '"win-client-linux-x64-gnu.zip"', "Linux updater ZIP")
     require(updater, '"win-client-macos-arm64.zip"', "macOS updater ZIP")
-    require(linux, 'ln -s usr/bin/pomme-client "$appdir/AppRun"', "Linux internal binary path")
+    require(linux, 'ln -s usr/bin/win-client "$appdir/AppRun"', "Linux internal binary path")
     for item in ("OpenAL Soft", "1.25.1", "GNU LIBRARY GENERAL PUBLIC LICENSE"):
         require(notice + license_text, item, "OpenAL notice/license entry")
 

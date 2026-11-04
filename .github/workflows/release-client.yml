@@ -121,16 +121,6 @@ jobs:
             artifact: win-client.exe
             name: win-client-windows-x64
             openal_classifier: natives-windows
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact: win-client
-            name: win-client-linux-x64-gnu
-            openal_classifier: natives-linux
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact: win-client
-            name: win-client-macos-arm64
-            openal_classifier: natives-macos-arm64
 
     runs-on: ${{ matrix.os }}
     # macOS arm64 runners are often unavailable (capacity); the launcher only

@@ -30,10 +30,6 @@ def validate_dist(dist, tag):
     expected = [
         "win-client-windows-x64.zip",
         "win-client-windows-x64-setup.exe",
-        "win-client-linux-x64-gnu.zip",
-        "win-client-linux-x64-gnu.AppImage",
-        "win-client-macos-arm64.zip",
-        "win-client-macos-arm64.dmg",
         "sha256sums.txt",
         f"Win-Client-{tag}-source.tar.gz",
         f"Win-Client-{tag}-manifest.json",
@@ -119,8 +115,6 @@ def main():
     require(workflow, "${{ matrix.name }}.zip", "Windows ZIP packaging")
     require(workflow, "${{ matrix.name }}-setup", "Windows installer packaging")
     require(workflow, "WIN_CLIENT_RELEASE: ${{ needs.check.outputs.tag }}", "release environment")
-    require(workflow, "name: win-client-linux-x64-gnu", "Linux asset stem")
-    require(workflow, "name: win-client-macos-arm64", "macOS asset stem")
     require(workflow, "Prepare corresponding source archive with SteelMC", "SteelMC source staging")
     require(workflow, ".git-submodule-commit", "SteelMC pinned commit marker")
     require(workflow, ".git-commit-metadata", "SteelMC commit metadata")

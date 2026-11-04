@@ -77,7 +77,7 @@ def validate_dist(dist, tag):
     for line in (dist / "sha256sums.txt").read_text(encoding="utf-8").splitlines():
         digest_text, name = line.split(None, 1)
         sums[Path(name.lstrip("* ")).name] = digest_text
-    expected_sums = {name: digest(dist / name) for name in dist.iterdir() if name.is_file() and name.name != "sha256sums.txt"}
+    expected_sums = {entry.name: digest(entry) for entry in dist.iterdir() if entry.is_file() and entry.name != "sha256sums.txt"}
     if sums != expected_sums:
         raise SystemExit("sha256sums.txt does not match release files")
 

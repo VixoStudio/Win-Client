@@ -1,3 +1,5 @@
+use std::sync::mpsc;
+
 use discord_rich_presence::activity::*;
 use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
 
@@ -5,74 +7,90 @@ const DISCORD_CLIENT_ID: &str = "1489624876909330452";
 
 fn base_activity(version: &str) -> Activity<'static> {
     Activity::new()
-        .details(format!("Win Client — {version}"))
+        .details(format!("WinModing — {version}"))
         .assets(
             Assets::new()
-                .large_image("green-apple")
-                .large_text("Win Client"),
+                .large_image("winmoding")
+                .large_text("WinModing"),
         )
 }
 
-#[derive(PartialEq)]
-pub enum PresenceState {
-    Loading,
-    InMenu,
-    Multiplayer,
-    Singleplayer,
+/// Presence commands the UI thread sends to the IPC thread.
+enum Command {
+    Activity(String, String),
+    Clear,
 }
 
 pub struct DiscordPresence {
-    client: DiscordIpcClient,
-    state: PresenceState,
+    sender: mpsc::Sender<Command>,
 }
 
 impl DiscordPresence {
     pub fn start(version: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        // TODO: connect off the main thread; with Discord running, the
-        // handshake can block startup for tens of seconds.
-        let mut client = DiscordIpcClient::new(DISCORD_CLIENT_ID);
-        client.connect()?;
-        client.set_activity(base_activity(version).state("Starting..."))?;
-
-        Ok(Self {
-            client,
-            state: PresenceState::Loading,
-        })
+        // The IPC handshake can block for tens of seconds when Discord isn't
+        // running, so it happens off the main thread; a connect failure only
+        // disables rich presence, never the game.
+        let (sender, receiver) = mpsc::channel::<Command>();
+        let version = version.to_owned();
+        std::thread::Builder::new()
+            .name("discord-presence".into())
+            .spawn(move || ipc_thread(version, receiver))?;
+        Ok(Self { sender })
     }
 
     pub fn set_in_menu(&mut self, version: &str) {
-        self.enter(PresenceState::InMenu, version, "In the menu");
+        let _ = self
+            .sender
+            .send(Command::Activity(version.to_owned(), "In the menu".into()));
     }
 
     pub fn playing_multiplayer(&mut self, version: &str) {
-        self.enter(PresenceState::Multiplayer, version, "In a server");
+        let _ = self
+            .sender
+            .send(Command::Activity(version.to_owned(), "In a server".into()));
     }
 
     pub fn playing_singleplayer(&mut self, version: &str) {
-        self.enter(PresenceState::Singleplayer, version, "In a world");
+        let _ = self
+            .sender
+            .send(Command::Activity(version.to_owned(), "In a world".into()));
     }
+}
 
-    /// Re-entering the current state sends nothing.
-    fn enter(&mut self, state: PresenceState, version: &str, text: &str) {
-        if self.state == state {
-            return;
+/// Owns the IPC client, reconnecting once per command if the pipe dropped.
+fn ipc_thread(initial_version: String, receiver: mpsc::Receiver<Command>) {
+    let mut client: Option<DiscordIpcClient> = None;
+    let mut current_version = initial_version;
+    while let Ok(command) = receiver.recv() {
+        match command {
+            Command::Activity(version, state) => {
+                current_version = version;
+                let activity = base_activity(&current_version).state(state.as_str());
+                if client.is_none() {
+                    let mut fresh = DiscordIpcClient::new(DISCORD_CLIENT_ID);
+                    if fresh.connect().is_ok() {
+                        client = Some(fresh);
+                    }
+                }
+                if let Some(live) = client.as_mut()
+                    && live.set_activity(activity).is_err()
+                {
+                    client = None;
+                }
+            }
+            Command::Clear => {
+                if let Some(live) = client.as_mut() {
+                    if live.clear_activity().is_err() {
+                        client = None;
+                    }
+                }
+            }
         }
-        self.state = state;
-        let _ = self.set_activity(base_activity(version).state(text));
-    }
-
-    fn set_activity(&mut self, payload: Activity) -> Result<(), Box<dyn std::error::Error>> {
-        if self.client.set_activity(payload.clone()).is_err() {
-            let _ = self.client.connect();
-            self.client.set_activity(payload)?;
-        }
-        Ok(())
     }
 }
 
 impl Drop for DiscordPresence {
     fn drop(&mut self) {
-        let _ = self.client.clear_activity();
-        let _ = self.client.close();
+        let _ = self.sender.send(Command::Clear);
     }
 }

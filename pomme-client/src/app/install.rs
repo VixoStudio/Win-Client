@@ -175,7 +175,7 @@ impl Install {
             State::Running(p) => (
                 p.fraction(),
                 match self.job {
-                    Job::Update => format!("Updating Win Client: {}", p.status),
+                    Job::Update => format!("Updating WinModing: {}", p.status),
                     Job::Assets => format!("Minecraft {}: {}", core.version, p.status),
                 },
             ),

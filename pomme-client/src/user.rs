@@ -32,9 +32,10 @@ impl UserData {
     /// Who a launch plays as, and whether it must sign in first. A release
     /// build only plays as a signed-in Microsoft account that owns Java
     /// Edition, so it ignores account flags (even the old launcher's) and
-    /// restores the stored account or signs in. A dev build takes them, to
-    /// play offline; without any, a phone signs in and a desktop plays
-    /// offline, never reading the keychain unasked.
+    /// restores the stored account or signs in — unless the launcher passed
+    /// a username, which names an offline player directly. A dev build takes
+    /// the flags, to play offline; without any, a phone signs in and a
+    /// desktop plays offline, never reading the keychain unasked.
     pub fn for_launch(
         username: Option<String>,
         uuid: Option<String>,
@@ -43,6 +44,10 @@ impl UserData {
         mobile: bool,
     ) -> (Self, bool) {
         if release {
+            // A launcher-supplied identity plays offline under that name.
+            if username.is_some() {
+                return (Self::from_args(username, uuid, None), false);
+            }
             return (Self::from_args(None, None, None), true);
         }
         let flagged = username.is_some() || uuid.is_some() || access_token.is_some();
@@ -84,6 +89,20 @@ mod tests {
     }
 
     #[test]
+    fn a_release_launch_with_a_username_plays_offline_under_it() {
+        let (user, required) = UserData::for_launch(
+            Some("Steve".to_owned()),
+            Some("5627dd98-e6be-3c21-b8a8-e92344183641".to_owned()),
+            None,
+            true,
+            false,
+        );
+        assert!(!required);
+        assert_eq!(user.username, "Steve");
+        assert!(user.access_token.is_none());
+    }
+
+    #[test]
     fn only_dev_builds_play_from_account_flags() {
         let launch = |release, mobile| {
             UserData::for_launch(
@@ -95,13 +114,16 @@ mod tests {
             )
         };
         for mobile in [false, true] {
-            let (user, required) = launch(true, mobile);
-            assert!(required);
-            assert!(user.access_token.is_none() && !user.has_profile);
-
+            // A release build with a launcher-supplied username plays offline
+            // under it (even with a token, which the release build distrusts).
             let (user, required) = launch(false, mobile);
             assert!(!required);
             assert_eq!(user.access_token.as_deref(), Some("token"));
+            let (user, required) = launch(true, mobile);
+            assert!(!required, "a named release launch plays offline");
+            assert_eq!(user.username, "Steve");
+            // The token is dropped, but the profile UUID is kept.
+            assert!(user.access_token.is_none());
         }
         let bare = |mobile| UserData::for_launch(None, None, None, false, mobile).1;
         assert!(!bare(false), "a desktop dev build plays offline");

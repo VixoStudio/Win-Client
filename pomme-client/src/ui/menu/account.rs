@@ -35,6 +35,14 @@ impl MainMenu {
         });
     }
 
+    /// Leaves the account gate without signing in: this launch plays offline,
+    /// with no token (online servers that require auth will refuse it).
+    fn play_offline(&mut self, key_bindings: &KeyBindings) {
+        self.account_required = false;
+        self.cancel_sign_in();
+        self.close_account(key_bindings);
+    }
+
     /// Still signed out, with no sign-in under way: the stored account is
     /// missing or failed to restore.
     pub(crate) fn no_account_to_restore(&self) -> bool {
@@ -116,11 +124,11 @@ impl MainMenu {
                 ),
                 (None, SignIn::Idle) if gated => (
                     vec![
-                        "Win Client needs a Minecraft account.".into(),
-                        "Sign in with the Microsoft account that owns Minecraft.".into(),
+                        "WinModing needs a Minecraft account to play online.".into(),
+                        "Sign in with the Microsoft account that owns Minecraft, or play offline.".into(),
                     ],
                     None,
-                    vec!["Sign In", leave],
+                    vec!["Sign In", "Play Offline", leave],
                 ),
                 (None, SignIn::Idle) => (
                     vec!["Sign in with a Microsoft account to join online servers.".into()],
@@ -220,6 +228,7 @@ impl MainMenu {
         let mut action = MenuAction::None;
         match pressed {
             Some("Sign In" | "Try Again") => self.start_sign_in(),
+            Some("Play Offline") => self.play_offline(key_bindings),
             Some("Copy Code") => {
                 if let SignIn::Code(code) = &*self.sign_in.read() {
                     common::set_clipboard(&code.user_code);
@@ -259,11 +268,19 @@ mod tests {
     }
 
     fn texts(result: &MainMenuResult) -> Vec<&str> {
+        text_positions(result)
+            .into_iter()
+            .map(|(text, _, _)| text)
+            .collect()
+    }
+
+    /// The centered button labels with their positions, to click them.
+    fn text_positions(result: &MainMenuResult) -> Vec<(&str, f32, f32)> {
         result
             .elements
             .iter()
             .filter_map(|e| match e {
-                MenuElement::Text { text, .. } => Some(text.as_str()),
+                MenuElement::Text { x, y, text, .. } => Some((text.as_str(), *x, *y)),
                 _ => None,
             })
             .collect()
@@ -305,9 +322,19 @@ mod tests {
         };
         menu.build(W, H, &escape, &mut key_bindings, text_width);
         let gate = menu.build(W, H, &MenuInput::default(), &mut key_bindings, text_width);
-        assert!(texts(&gate).contains(&"Win Client needs a Minecraft account."));
+        assert!(texts(&gate).contains(&"WinModing needs a Minecraft account to play online."));
+        assert!(texts(&gate).contains(&"Play Offline"));
         assert!(texts(&gate).contains(&"Quit"));
         assert!(!texts(&gate).contains(&"Back"));
+
+        // Play Offline lifts the gate: the next launch has no gate to restore,
+        // and re-enabling it (set_account with no token) re-opens the gate.
+        menu.play_offline(&key_bindings);
+        assert!(matches!(menu.screen, Screen::Main));
+        assert!(!menu.account_gated());
+
+        menu.require_account(&key_bindings);
+        assert!(matches!(menu.screen, Screen::Account));
 
         menu.set_account("Tester".into(), Some("token".into()), &key_bindings);
         menu.set_screen(Screen::Main, &key_bindings);

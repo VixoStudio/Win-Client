@@ -133,14 +133,14 @@ def main():
     for item in ("OpenAL Soft", "1.25.1", "GNU LIBRARY GENERAL PUBLIC LICENSE"):
         require(notice + license_text, item, "OpenAL notice/license entry")
 
-    require(main_screen, 'text_width_fn("Win Client", title_size)', "main-screen downstream wordmark")
-    require(main_screen, 'text: "Win Client".into()', "main-screen downstream title")
-    require(main_screen, 'format!("Win Client {}", crate::update::version())', "main-screen downstream version copy")
+    require(main_screen, 'text_width_fn("WinModing", title_size)', "main-screen downstream wordmark")
+    require(main_screen, 'text: "WinModing".into()', "main-screen downstream title")
+    require(main_screen, 'format!("WinModing {}", crate::update::version())', "main-screen downstream version copy")
     require(credits, 'https://github.com/vithorixscom-debug/Win-Client/blob/master/THIRD_PARTY_LICENSES.md', "downstream license URL")
-    require(credits, 'text_width_fn("Win Client", wordmark_size)', "credits downstream wordmark")
-    require(credits, 'text: "Win Client".into()', "credits downstream title")
+    require(credits, 'text_width_fn("WinModing", wordmark_size)', "credits downstream wordmark")
+    require(credits, 'text: "WinModing".into()', "credits downstream title")
     require(in_game, 'https://github.com/vithorixscom-debug/Win-Client/issues', "downstream issue URL")
-    require(in_game, 'format!("Win Client {}", env!("CARGO_PKG_VERSION"))', "debug version downstream title")
+    require(in_game, 'format!("WinModing {}", env!("CARGO_PKG_VERSION"))', "debug version downstream title")
     for source in (main_screen, credits, in_game):
         if "Pomme Debugger" in source or "https://github.com/PommeMC/Client/issues" in source:
             raise SystemExit("legacy Windows-facing Pomme branding remains")

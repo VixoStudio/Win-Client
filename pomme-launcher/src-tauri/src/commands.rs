@@ -590,7 +590,7 @@ fn find_client_binary() -> Result<std::path::PathBuf, String> {
         }
     }
 
-    Err("Win Client not found. It will be bundled in future releases.".into())
+    Err("WinModing not found. It will be bundled in future releases.".into())
 }
 
 #[tauri::command]

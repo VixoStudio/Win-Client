@@ -497,12 +497,13 @@ impl MenuGeometry {
                     color,
                     centered,
                 } => {
+                    let text = crate::ui::translation::translate(text);
                     let start_x = if *centered {
                         *x - self.mc_text_width(text, *scale) / 2.0
                     } else {
                         *x
                     };
-                    let span = TextSpan::new(text.clone(), *color);
+                    let span = TextSpan::new(text.to_owned(), *color);
                     self.push_text_into(
                         &mut drawn_objects,
                         &mut vertices,
@@ -523,7 +524,8 @@ impl MenuGeometry {
                     scale,
                     color,
                 } => {
-                    let span = TextSpan::new(text.clone(), *color);
+                    let text = crate::ui::translation::translate(text);
+                    let span = TextSpan::new(text.to_owned(), *color);
                     self.push_text_into(
                         &mut drawn_objects,
                         &mut vertices,
@@ -987,8 +989,9 @@ impl MenuGeometry {
 
     fn text_width_in(&self, text: &str, scale: f32, font: Option<&str>) -> f32 {
         let Some(ref gm) = self.mc_glyph_map else {
-            return plain_text_width(&self.atlas, text, scale);
+            return plain_text_width(&self.atlas, crate::ui::translation::translate(text), scale);
         };
+        let text = crate::ui::translation::translate(text);
         if text.contains(PREFIX_CODE) {
             let mut span = TextSpan::new(text.to_owned(), [1.0; 4]);
             span.font = font.map(str::to_owned);

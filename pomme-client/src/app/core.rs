@@ -1000,6 +1000,7 @@ impl AppCore {
             user.access_token.clone(),
             &mut input.key_bindings,
         );
+        menu.apply_language();
 
         let display_mode = menu.display_mode;
 

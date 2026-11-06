@@ -28,6 +28,7 @@ pub mod text;
 pub mod text_edit;
 pub mod title;
 pub mod toast;
+pub mod translation;
 pub mod touch_controls;
 pub mod world_list;
 

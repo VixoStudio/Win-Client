@@ -708,7 +708,7 @@ impl Source {
             unsafe { (self.context.api.al_source_unqueue_buffers)(self.id, 1, &mut id) };
             self.context.api.al_error("unqueue stream buffer")?;
             let expected = queued.front().ok_or_else(|| {
-                "OpenAL processed more buffers than Win Client queued".to_string()
+                "OpenAL processed more buffers than WinModing queued".to_string()
             })?;
             if expected.id != id {
                 return Err(format!(
@@ -732,7 +732,7 @@ impl Source {
             self.context.api.al_error("clear stream buffer")?;
             let expected = queued
                 .front()
-                .ok_or_else(|| "OpenAL queued more buffers than Win Client tracks".to_string())?;
+                .ok_or_else(|| "OpenAL queued more buffers than WinModing tracks".to_string())?;
             if expected.id != id {
                 return Err(format!(
                     "OpenAL cleared buffer {id}, expected {}",

@@ -201,6 +201,13 @@ pub fn update_menu(
             }
             core.menu.start_transition_open();
         }
+        MenuAction::Rename(name) => {
+            // Offline rename: new name, synthesized offline UUID, no token.
+            core.user = crate::user::UserData::from_args(Some(name.clone()), None, None);
+            core.menu.account_name_original = name.clone();
+            core.menu
+                .set_account(name, None, &core.input.key_bindings);
+        }
         MenuAction::Account(account) => {
             if account.is_none() {
                 core.menu.forget_account(&core.user.uuid);

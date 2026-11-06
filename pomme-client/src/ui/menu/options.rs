@@ -178,7 +178,7 @@ impl MainMenu {
         let sliders: &[(&str, f32)] = &[("FOV:", fov_frac)];
         // Nav rows are disabled only where the target is a `build_options_stub`
         // page; screens with real (if inert) controls stay reachable.
-        let disabled = &["Language...", "Telemetry Data..."];
+        let disabled = &["Telemetry Data..."];
         self.build_options_grid(
             sw,
             sh,
@@ -842,7 +842,109 @@ impl MainMenu {
         )
     }
 
-    /// Vanilla `FontOptionsScreen`, opened from the Language screen.
+    /// Vanilla `LanguageSelectScreen`: the language rows plus the footer's
+    /// Font Settings / Done pair.
+    pub(super) fn build_options_language(
+        &mut self,
+        sw: f32,
+        sh: f32,
+        input: &MenuInput,
+        back: Screen,
+        key_bindings: &KeyBindings,
+    ) -> MainMenuResult {
+        use crate::ui::menu::common;
+
+        if input.escape {
+            self.set_screen(back, key_bindings);
+            return empty_result();
+        }
+
+        let gs = self.gui_scale(sw, sh);
+        let cx = sw / 2.0;
+        let _fs = common::FONT_SIZE * gs;
+        let btn_h = BTN_H * gs;
+
+        let mut elements = vec![MenuElement::BlurBackground];
+        let mut any_hovered = false;
+        let mut any_clicked = false;
+
+        let chrome = push_screen_chrome(&mut elements, sw, sh, gs, "Language");
+
+        self.focus_advance(input);
+        let ctx = &mut self.make_focus_ctx(input);
+
+        let langs = crate::ui::translation::LANGUAGES;
+        let row_h = btn_h + 2.0 * gs;
+        let list_h = row_h * langs.len() as f32;
+        let top = ((chrome.content_top + chrome.content_bottom) / 2.0) - list_h / 2.0;
+
+        for (i, (code, name)) in langs.iter().enumerate() {
+            let y = top + i as f32 * row_h;
+            let selected = i as u8 == self.language;
+            let label = if selected {
+                format!("{name} ({code})")
+            } else {
+                (*name).to_string()
+            };
+            let w = (FOOTER_PAIR_W * 2.0 + FOOTER_PAIR_GAP) * gs;
+            if push_button_f(
+                &mut elements,
+                ctx,
+                &mut any_hovered,
+                input.cursor,
+                input.clicked,
+                cx - w / 2.0,
+                y,
+                w,
+                btn_h,
+                gs,
+                &label,
+                true,
+            ) {
+                any_clicked = true;
+                if !selected {
+                    self.language = i as u8;
+                    crate::ui::translation::set_language(i as u8);
+                    self.save_settings(key_bindings);
+                }
+            }
+        }
+
+        // Vanilla footer: Font Settings... and Done.
+        let (w, gap) = (FOOTER_PAIR_W * gs, FOOTER_PAIR_GAP * gs);
+        let x = cx - w - gap / 2.0;
+        let mut push = |x, label| {
+            push_footer_button(
+                &mut elements,
+                ctx,
+                &mut any_hovered,
+                input,
+                &chrome,
+                x,
+                w,
+                gs,
+                label,
+                true,
+            )
+        };
+        if push(x, "Font Settings...") {
+            self.set_screen(Screen::OptionsFontSettings, key_bindings);
+        }
+        let done = push(x + w + gap, "Done");
+        if done {
+            self.set_screen(back, key_bindings);
+        }
+        self.finish_focus(ctx);
+
+        MainMenuResult {
+            elements,
+            action: MenuAction::None,
+            cursor_pointer: any_hovered,
+            clicked_button: any_clicked || ctx.fired,
+        }
+    }
+
+
     pub(super) fn build_options_font(
         &mut self,
         sw: f32,

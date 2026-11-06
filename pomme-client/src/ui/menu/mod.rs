@@ -128,6 +128,9 @@ struct Settings {
     force_unicode_font: bool,
     #[serde(default = "default_japanese_glyph_variants")]
     japanese_glyph_variants: bool,
+    /// Selected UI language index into [`crate::ui::translation::LANGUAGES`].
+    #[serde(default)]
+    language: u8,
 }
 
 fn default_fov() -> u32 {
@@ -258,6 +261,7 @@ impl Default for Settings {
             chat: ChatOptions::default(),
             force_unicode_font: false,
             japanese_glyph_variants: default_japanese_glyph_variants(),
+            language: 0,
         }
     }
 }
@@ -362,6 +366,8 @@ pub enum MenuAction {
     ChangeTheme(PanoramaTheme),
     /// Signed in (`Some`) or out (`None`) from the account screen.
     Account(Option<pomme_auth::AuthAccount>),
+    /// Rename the offline player (and the UUID servers see it under).
+    Rename(String),
     /// Open the singleplayer world in this save folder.
     PlayWorld {
         folder: String,
@@ -766,6 +772,9 @@ pub struct MainMenu {
     pub chat_options: ChatOptions,
     pub force_unicode_font: bool,
     pub japanese_glyph_variants: bool,
+    /// Selected UI language index, applied via
+    /// [`crate::ui::translation::set_language`].
+    pub language: u8,
     active_slider: Option<&'static str>,
     settings_dir: PathBuf,
     /// Set by slider drags, written by `flush_settings`.
@@ -788,6 +797,10 @@ pub struct MainMenu {
     /// Set by a Font Settings toggle, applied by `AppCore::apply_font_options`.
     pub reload_fonts: bool,
     pack_search: TextFieldState,
+    /// The account screen's offline-name edit box.
+    account_name: TextFieldState,
+    /// Username as the account screen's edit opened it, to detect a rename.
+    pub(crate) account_name_original: String,
 }
 
 /// Vanilla EditBox max lengths (UTF-16 units): server name uses the EditBox
@@ -815,6 +828,7 @@ impl MainMenu {
         let ping_results: PingResults = Default::default();
         let settings = load_settings(game_dir);
         *key_bindings = settings.key_bindings;
+        let account_name_original = username.clone();
         let mut menu = Self {
             action_binding: None,
             username,
@@ -927,6 +941,7 @@ impl MainMenu {
             chat_options: settings.chat.sanitized(),
             force_unicode_font: settings.force_unicode_font,
             japanese_glyph_variants: settings.japanese_glyph_variants,
+            language: settings.language,
             active_slider: None,
             settings_dir: game_dir.to_path_buf(),
             settings_dirty: false,
@@ -944,6 +959,8 @@ impl MainMenu {
             reload_assets: false,
             reload_fonts: false,
             pack_search: TextFieldState::new(MAX_SEARCH),
+            account_name: TextFieldState::new(16),
+            account_name_original: account_name_original,
         };
         // Saved on Bedrock but its files are gone: start on Default and pick
         // Bedrock again, which downloads them and then switches.
@@ -952,6 +969,11 @@ impl MainMenu {
             menu.pick_theme(PanoramaTheme::Bedrock);
         }
         menu
+    }
+
+    /// Apply the persisted UI language to the global translation table.
+    pub fn apply_language(&self) {
+        crate::ui::translation::set_language(self.language);
     }
 
     /// Chat Settings opened from chat; leaving them leaves the menu, back to
@@ -1171,6 +1193,7 @@ impl MainMenu {
                 chat: self.chat_options,
                 force_unicode_font: self.force_unicode_font,
                 japanese_glyph_variants: self.japanese_glyph_variants,
+                language: self.language,
             },
         )
         .is_err();
@@ -1482,7 +1505,9 @@ impl MainMenu {
             Screen::Friends => {
                 self.build_friends(screen_w, screen_h, input, &text_width_fn, key_bindings)
             }
-            Screen::Account => self.build_account(screen_w, screen_h, input, key_bindings),
+            Screen::Account => {
+                self.build_account(screen_w, screen_h, input, &text_width_fn, key_bindings)
+            }
             Screen::ConfirmDelete(_) => {
                 self.build_confirm_delete(screen_w, screen_h, input, &text_width_fn, key_bindings)
             }
@@ -1521,13 +1546,11 @@ impl MainMenu {
             }
             Screen::OptionsLanguage => {
                 let back = self.settings_back.clone_screen();
-                self.build_options_stub(
+                self.build_options_language(
                     screen_w,
                     screen_h,
                     input,
-                    "Language",
                     back,
-                    Some(("Font Settings...", Screen::OptionsFontSettings)),
                     key_bindings,
                 )
             }

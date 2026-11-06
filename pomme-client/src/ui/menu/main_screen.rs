@@ -145,11 +145,11 @@ impl MainMenu {
         });
         cy += accent_bar_h + 14.0 * s;
 
-        let wordmark_w = text_width_fn("Win Client", title_size);
+        let wordmark_w = text_width_fn("WinModing", title_size);
         elements.push(MenuElement::Text {
             x: btn_x,
             y: cy,
-            text: "Win Client".into(),
+            text: "WinModing".into(),
             scale: title_size,
             color: COL_WORDMARK,
             centered: false,
@@ -464,7 +464,7 @@ impl MainMenu {
             color: footer_col,
             centered: false,
         });
-        let copy = format!("Win Client {}", crate::update::version());
+        let copy = format!("WinModing {}", crate::update::version());
         let copy_w = text_width_fn(&copy, footer_size);
         elements.push(MenuElement::Text {
             x: screen_w - footer_pad - copy_w,

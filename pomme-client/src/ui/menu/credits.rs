@@ -314,7 +314,7 @@ impl MainMenu {
         let logo_size = LOGO_SIZE * gs;
         let wordmark_size = WORDMARK_SIZE * gs;
         if visible(logo_top, logo_size, sh) {
-            let wordmark_w = text_width_fn("Win Client", wordmark_size);
+            let wordmark_w = text_width_fn("WinModing", wordmark_size);
             let lockup_w = logo_size + LOGO_GAP * gs + wordmark_w;
             let logo_x = cx - lockup_w / 2.0;
             elements.push(MenuElement::Image {
@@ -328,7 +328,7 @@ impl MainMenu {
             elements.push(MenuElement::Text {
                 x: logo_x + logo_size + LOGO_GAP * gs,
                 y: logo_top + (logo_size - wordmark_size) / 2.0,
-                text: "Win Client".into(),
+                text: "WinModing".into(),
                 scale: wordmark_size,
                 color: COL_WORDMARK,
                 centered: false,

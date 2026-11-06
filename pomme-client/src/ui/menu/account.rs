@@ -96,6 +96,7 @@ impl MainMenu {
         screen_w: f32,
         screen_h: f32,
         input: &MenuInput,
+        text_width_fn: &dyn Fn(&str, f32) -> f32,
         key_bindings: &KeyBindings,
     ) -> MainMenuResult {
         let gated = self.account_gated();
@@ -171,7 +172,20 @@ impl MainMenu {
         let spacing = 8.0 * gs;
         let cx = screen_w / 2.0;
         let code_h = code.as_ref().map_or(0.0, |_| code_fs + spacing);
-        let column_h = (fs + spacing) * lines.len() as f32 + code_h + 2.0 * spacing + btn_h;
+        // The offline-name editor, shown when no Microsoft account is signed in:
+        // a label, the edit box, and a Rename button beside it.
+        let show_name_field =
+            self.access_token.is_none() && matches!(*self.sign_in.read(), SignIn::Idle);
+        let field_w = (screen_w * 0.4).min(220.0 * gs);
+        let field_h = btn_h;
+        let rename_w = 70.0 * gs;
+        let field_row_h = if show_name_field {
+            fs + spacing + field_h + 2.0 * spacing
+        } else {
+            0.0
+        };
+        let column_h =
+            (fs + spacing) * lines.len() as f32 + code_h + 2.0 * spacing + field_row_h + btn_h;
         let mut y = (screen_h - column_h) / 2.0;
 
         let mut elements = vec![MenuElement::BlurBackground];
@@ -200,6 +214,64 @@ impl MainMenu {
         }
         y += 2.0 * spacing;
 
+        let mut rename_pressed = false;
+        if show_name_field {
+            // Initialize the edit box from the current name the first time in.
+            if self.account_name.value().is_empty()
+                && self.account_name_original != self.username
+            {
+                self.account_name_original = self.username.clone();
+            }
+            if self.account_name.value().is_empty() && !self.account_name_original.is_empty() {
+                self.account_name.set_value(
+                    &self.account_name_original,
+                    field_w - 8.0 * gs,
+                    &|s: &str| text_width_fn(s, fs),
+                );
+            }
+            elements.push(MenuElement::Text {
+                x: cx,
+                y,
+                text: "Player name (offline):".into(),
+                scale: fs,
+                color: WHITE,
+                centered: true,
+            });
+            y += fs + spacing;
+
+            self.cycle_fields(input, 1);
+            self.text_field(
+                &mut elements,
+                TextTarget::AccountName,
+                0,
+                input,
+                cx - (field_w + gap + rename_w) / 2.0,
+                y,
+                field_w,
+                field_h,
+                fs,
+                gs,
+                text_width_fn,
+            );
+            self.focus_advance(input);
+            let mut ctx2 = self.make_focus_ctx(input);
+            rename_pressed = push_button_f(
+                &mut elements,
+                &mut ctx2,
+                &mut any_hovered,
+                input.cursor,
+                input.clicked,
+                cx - (field_w + gap + rename_w) / 2.0 + field_w + gap,
+                y,
+                rename_w,
+                btn_h,
+                gs,
+                "Rename",
+                true,
+            );
+            y += field_h + 2.0 * spacing;
+        }
+
         self.focus_advance(input);
         let mut ctx = self.make_focus_ctx(input);
         let mut pressed = None;
@@ -226,6 +298,7 @@ impl MainMenu {
         self.finish_focus(&ctx);
 
         let mut action = MenuAction::None;
+        let pressed = if rename_pressed { Some("Rename") } else { pressed };
         match pressed {
             Some("Sign In" | "Try Again") => self.start_sign_in(),
             Some("Play Offline") => self.play_offline(key_bindings),
@@ -240,6 +313,12 @@ impl MainMenu {
                 }
             }
             Some("Sign Out") => action = MenuAction::Account(None),
+            Some("Rename") => {
+                let name = self.account_name.value().trim().to_string();
+                if !name.is_empty() && name != self.username {
+                    action = MenuAction::Rename(name);
+                }
+            }
             Some("Cancel") => self.cancel_sign_in(),
             Some("Back") => self.close_account(key_bindings),
             Some("Quit") => action = MenuAction::Quit,

@@ -101,7 +101,7 @@ pub fn run(args: LaunchArgs, platform: Platform) {
     if args.owns_data_folder()
         && let Err(e) = pomme_dirs::migrate()
     {
-        eprintln!("Couldn't migrate the old upstream data folder into Win Client storage: {e}");
+        eprintln!("Couldn't migrate the old upstream data folder into WinModing storage: {e}");
     }
     #[cfg(target_os = "android")]
     if let Ok(mut app) = util::ANDROID_APP.write() {
